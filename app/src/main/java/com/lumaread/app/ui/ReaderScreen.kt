@@ -1,5 +1,3 @@
-ExperimentalMaterial3Api
-73
 package com.lumaread.app.ui
 
 import android.content.Intent
