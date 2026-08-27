@@ -26,7 +26,7 @@ PDFs and extracted text remain on the device. The bundled OCR models work locall
 ## Android requirements
 
 - Minimum Android: 8.0 (API 26)
-- compileSdk: 37
+- compileSdk: 36
 - targetSdk: 36
 - Android Gradle Plugin: 9.3.0
 - Gradle: 9.5.0

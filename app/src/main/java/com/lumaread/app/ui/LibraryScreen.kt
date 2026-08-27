@@ -48,11 +48,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.lumaread.app.data.BookItem
+import com.lumaread.app.R
+import com.lumaread.app.data.MediaType
 import com.lumaread.app.pdf.PdfPageRenderer
 import com.lumaread.app.tts.PlaybackState
 import com.lumaread.app.tts.ReadAloudService
@@ -86,11 +89,11 @@ fun LibraryScreen(
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.AutoStories,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
+                    Image(
+                        painter = painterResource(R.drawable.lumaread_firefly),
+                        contentDescription = "LumaRead firefly",
+                        modifier = Modifier.size(46.dp),
+                        contentScale = ContentScale.Fit
                     )
                 }
             }
@@ -118,7 +121,7 @@ fun LibraryScreen(
         ) {
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text("Add PDF book", fontWeight = FontWeight.SemiBold)
+            Text("Add book or audiobook", fontWeight = FontWeight.SemiBold)
         }
 
         if (playback.active) {
@@ -179,9 +182,9 @@ private fun BookCard(book: BookItem, onOpen: () -> Unit, onRemove: () -> Unit) {
     val context = LocalContext.current
     val cover by produceState<android.graphics.Bitmap?>(initialValue = null, key1 = book.uri) {
         value = withContext(Dispatchers.IO) {
-            runCatching {
+            if (book.mediaType == MediaType.PDF) runCatching {
                 PdfPageRenderer.renderPage(context, Uri.parse(book.uri), 0, 600)
-            }.getOrNull()
+            }.getOrNull() else null
         }
     }
 
@@ -199,7 +202,9 @@ private fun BookCard(book: BookItem, onOpen: () -> Unit, onRemove: () -> Unit) {
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center
         ) {
-            if (cover == null) {
+            if (book.mediaType == MediaType.AUDIO) {
+                Icon(Icons.Default.Headphones, contentDescription = "Audiobook", modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+            } else if (cover == null) {
                 CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
             } else {
                 Image(
@@ -221,7 +226,8 @@ private fun BookCard(book: BookItem, onOpen: () -> Unit, onRemove: () -> Unit) {
                     )
                     Spacer(Modifier.height(5.dp))
                     Text(
-                        "Page ${book.lastPage + 1} of ${book.totalPages}",
+                        if (book.mediaType == MediaType.AUDIO) audioProgressLabel(book.positionMs, book.durationMs)
+                        else "Page ${book.lastPage + 1} of ${book.totalPages}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -310,7 +316,7 @@ private fun EmptyLibrary(modifier: Modifier = Modifier, onImport: () -> Unit) {
             Spacer(Modifier.height(14.dp))
             Text("Your bookshelf is empty", fontWeight = FontWeight.SemiBold)
             Text(
-                "Import a PDF and LumaRead will remember where you stopped.",
+                "Import a PDF, MP3 or M4B and LumaRead will remember where you stopped.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 6.dp, start = 24.dp, end = 24.dp)
@@ -320,8 +326,16 @@ private fun EmptyLibrary(modifier: Modifier = Modifier, onImport: () -> Unit) {
                 onClick = onImport,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                Text("Choose a PDF")
+                Text("Choose a book or audiobook")
             }
         }
     }
+}
+
+private fun audioProgressLabel(positionMs: Long, durationMs: Long): String {
+    fun time(ms: Long): String {
+        val totalMinutes = ms / 60_000
+        return "%d:%02d".format(totalMinutes / 60, totalMinutes % 60)
+    }
+    return "${time(positionMs)} of ${time(durationMs)}"
 }
