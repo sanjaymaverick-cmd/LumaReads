@@ -1,3 +1,5 @@
+ExperimentalMaterial3Api
+73
 package com.lumaread.app.ui
 
 import android.content.Intent
@@ -72,6 +74,7 @@ import com.lumaread.app.tts.ReadAloudService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(
     book: BookItem,
