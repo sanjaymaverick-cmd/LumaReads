@@ -1,0 +1,133 @@
+package com.lumaread.app
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.database.Cursor
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.OpenableColumns
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lumaread.app.data.BookItem
+import com.lumaread.app.data.LibraryRepository
+import com.lumaread.app.pdf.PdfPageRenderer
+import com.lumaread.app.tts.ReadAloudService
+import com.lumaread.app.ui.LibraryScreen
+import com.lumaread.app.ui.ReaderScreen
+import com.lumaread.app.ui.theme.LumaTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        setContent {
+            LumaTheme {
+                val repository = remember { LibraryRepository(this@MainActivity) }
+                var books by remember { mutableStateOf(repository.loadBooks()) }
+                var selectedBookId by remember { mutableStateOf<String?>(null) }
+                val playback by ReadAloudService.state.collectAsStateWithLifecycle()
+
+                val notificationPermission = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { }
+
+                LaunchedEffect(Unit) {
+                    if (Build.VERSION.SDK_INT >= 33 &&
+                        ContextCompat.checkSelfPermission(
+                            this@MainActivity,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+
+                val pdfPicker = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    if (uri != null) {
+                        runCatching {
+                            contentResolver.takePersistableUriPermission(
+                                uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
+                        }
+                        val pageCount = runCatching { PdfPageRenderer.pageCount(this@MainActivity, uri) }.getOrDefault(1)
+                        val title = getDisplayName(uri).removeSuffix(".pdf").ifBlank { "Untitled book" }
+                        val existing = books.firstOrNull { it.uri == uri.toString() }
+                        val book = existing ?: BookItem(
+                            id = uri.toString(),
+                            title = title,
+                            uri = uri.toString(),
+                            totalPages = pageCount
+                        )
+                        books = (books.filterNot { it.id == book.id } + book).sortedByDescending { it.addedAt }
+                        repository.saveBooks(books)
+                        selectedBookId = book.id
+                    }
+                }
+
+                LaunchedEffect(playback.bookUri, playback.pageIndex, playback.active) {
+                    if (playback.active && playback.bookUri.isNotBlank()) {
+                        val index = books.indexOfFirst { it.uri == playback.bookUri }
+                        if (index >= 0 && books[index].lastPage != playback.pageIndex) {
+                            books = books.toMutableList().also { list ->
+                                list[index] = list[index].copy(lastPage = playback.pageIndex)
+                            }
+                            repository.saveBooks(books)
+                        }
+                    }
+                }
+
+                val selected = books.firstOrNull { it.id == selectedBookId }
+                if (selected == null) {
+                    LibraryScreen(
+                        books = books,
+                        playback = playback,
+                        onImport = { pdfPicker.launch(arrayOf("application/pdf")) },
+                        onOpen = { selectedBookId = it.id },
+                        onRemove = { book ->
+                            books = books.filterNot { it.id == book.id }
+                            repository.saveBooks(books)
+                        }
+                    )
+                } else {
+                    ReaderScreen(
+                        book = selected,
+                        playback = playback,
+                        onBack = { selectedBookId = null },
+                        onBookChanged = { updated ->
+                            books = books.map { if (it.id == updated.id) updated else it }
+                            repository.saveBooks(books)
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private fun getDisplayName(uri: Uri): String {
+        var name = uri.lastPathSegment ?: "Book.pdf"
+        val cursor: Cursor? = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val index = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) name = it.getString(index) ?: name
+            }
+        }
+        return name
+    }
+}
