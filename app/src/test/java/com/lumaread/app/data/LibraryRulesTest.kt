@@ -7,8 +7,8 @@ import org.junit.Test
 class LibraryRulesTest {
     @Test
     fun `filters and sorts books deterministically`() {
-        val alpha = book(id = "alpha", title = "Alpha", addedAt = 3, lastOpenedAt = 5)
-        val audio = book(id = "audio", title = "Audio", mediaType = MediaType.AUDIO, addedAt = 4, lastOpenedAt = 10)
+        val alpha = book(id = "alpha", title = "Alpha", totalPages = 3, addedAt = 3, lastOpenedAt = 5)
+        val audio = book(id = "audio", title = "Audio", mediaType = MediaType.AUDIO, durationMs = 400L, positionMs = 100L, addedAt = 4, lastOpenedAt = 10)
         val missing = book(id = "missing", title = "Missing", status = BookStatus.MISSING, addedAt = 9)
 
         assertEquals(listOf("alpha", "missing"), LibraryRules.visibleBooks(listOf(audio, missing, alpha), "", LibraryFilter.BOOKS, LibrarySort.TITLE).map { it.id })
