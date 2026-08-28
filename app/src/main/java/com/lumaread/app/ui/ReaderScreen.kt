@@ -66,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.lumaread.app.data.BookItem
+import com.lumaread.app.data.Locator
 import com.lumaread.app.pdf.PdfPageRenderer
 import com.lumaread.app.tts.PlaybackState
 import com.lumaread.app.tts.ReadAloudService
@@ -152,13 +153,12 @@ fun ReaderScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        val nextMarks = if (page in book.bookmarks) book.bookmarks - page else book.bookmarks + page
-                        onBookChanged(book.copy(bookmarks = nextMarks, lastPage = page))
+                        onBookChanged(book.toggleBookmark(Locator(page)))
                     }) {
                         Icon(
-                            if (page in book.bookmarks) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            if (book.hasBookmark(Locator(page))) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                             contentDescription = "Bookmark page",
-                            tint = if (page in book.bookmarks) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            tint = if (book.hasBookmark(Locator(page))) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
                     IconButton(onClick = { showVoiceSettings = true }) {

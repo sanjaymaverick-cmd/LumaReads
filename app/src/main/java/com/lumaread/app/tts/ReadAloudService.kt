@@ -384,6 +384,10 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
         loading: Boolean = _state.value.loading,
         message: String = _state.value.message
     ) {
+        val current = units.getOrNull(sentenceIndex)
+        val inParagraph = current?.let { unit ->
+            units.filter { it.paragraphIndex == unit.paragraphIndex }
+        }.orEmpty()
         _state.value = PlaybackState(
             active = active,
             playing = playing,

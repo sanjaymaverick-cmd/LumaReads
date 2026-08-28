@@ -116,6 +116,7 @@ private val LibraryFilter.label: String get() = when (this) {
     LibraryFilter.BOOKS -> "Books"
     LibraryFilter.AUDIOBOOKS -> "Audiobooks"
     LibraryFilter.FAVOURITES -> "Favourites"
+    LibraryFilter.MISSING -> "Missing"
 }
 
 @Composable private fun SectionTitle(text: String) {

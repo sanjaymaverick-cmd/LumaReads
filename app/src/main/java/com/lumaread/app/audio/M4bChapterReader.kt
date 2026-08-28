@@ -63,6 +63,7 @@ object M4bChapterReader {
         channel.position(offset)
         while (buffer.hasRemaining() && channel.read(buffer) >= 0) Unit
         if (buffer.hasRemaining()) return null
-        return buffer.flip().order(ByteOrder.BIG_ENDIAN)
+        buffer.flip()
+        return buffer.order(ByteOrder.BIG_ENDIAN)
     }
 }
