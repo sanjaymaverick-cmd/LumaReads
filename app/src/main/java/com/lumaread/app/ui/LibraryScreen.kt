@@ -1,50 +1,24 @@
 package com.lumaread.app.ui
 
-import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -52,290 +26,167 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import com.lumaread.app.data.BookItem
 import com.lumaread.app.R
-import com.lumaread.app.data.MediaType
+import com.lumaread.app.data.*
 import com.lumaread.app.pdf.PdfPageRenderer
-import com.lumaread.app.tts.PlaybackState
-import com.lumaread.app.tts.ReadAloudService
+import com.lumaread.app.ui.theme.LumaThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
 fun LibraryScreen(
     books: List<BookItem>,
-    playback: PlaybackState,
     onImport: () -> Unit,
     onOpen: (BookItem) -> Unit,
-    onRemove: (BookItem) -> Unit
+    onFavourite: (BookItem) -> Unit,
+    themeMode: LumaThemeMode,
+    onThemeMode: (LumaThemeMode) -> Unit
 ) {
-    val context = LocalContext.current
+    var query by remember { mutableStateOf("") }
+    var filter by remember { mutableStateOf(LibraryFilter.ALL) }
+    var sort by remember { mutableStateOf(LibrarySort.RECENT) }
+    var showSort by remember { mutableStateOf(false) }
+    var showTheme by remember { mutableStateOf(false) }
+    val visible = remember(books, query, filter, sort) { LibraryRules.visibleBooks(books, query, filter, sort) }
+    val continuing = remember(books) { LibraryRules.continueReading(books) }
+    val recent = remember(books) { books.sortedByDescending { it.addedAt }.take(6) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 20.dp)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        contentPadding = PaddingValues(bottom = 28.dp)
     ) {
-        Spacer(Modifier.height(28.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier.size(52.dp),
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Image(
-                        painter = painterResource(R.drawable.lumaread_firefly),
-                        contentDescription = "LumaRead firefly",
-                        modifier = Modifier.size(46.dp),
-                        contentScale = ContentScale.Fit
-                    )
-                }
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "LumaRead",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "Read. Listen. Keep moving.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        Spacer(Modifier.height(22.dp))
-
-        Button(
-            onClick = onImport,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp)
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Add book or audiobook", fontWeight = FontWeight.SemiBold)
-        }
-
-        if (playback.active) {
-            Spacer(Modifier.height(14.dp))
-            NowPlayingCard(
-                playback = playback,
-                onOpen = {
-                    books.firstOrNull { it.uri == playback.bookUri }?.let(onOpen)
-                },
-                onToggle = {
-                    val action = if (playback.playing) ReadAloudService.ACTION_PAUSE else ReadAloudService.ACTION_RESUME
-                    ContextCompat.startForegroundService(
-                        context,
-                        Intent(context, ReadAloudService::class.java).setAction(action)
-                    )
-                }
-            )
-        }
-
-        Spacer(Modifier.height(22.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            Text(
-                "Your library",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                "${books.size} ${if (books.size == 1) "book" else "books"}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-
-        if (books.isEmpty()) {
-            EmptyLibrary(modifier = Modifier.weight(1f), onImport = onImport)
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 155.dp),
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                items(books, key = { it.id }) { book ->
-                    BookCard(book = book, onOpen = { onOpen(book) }, onRemove = { onRemove(book) })
-                }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-    }
-}
-
-@Composable
-private fun BookCard(book: BookItem, onOpen: () -> Unit, onRemove: () -> Unit) {
-    val context = LocalContext.current
-    val cover by produceState<android.graphics.Bitmap?>(initialValue = null, key1 = book.uri) {
-        value = withContext(Dispatchers.IO) {
-            if (book.mediaType == MediaType.PDF) runCatching {
-                PdfPageRenderer.renderPage(context, Uri.parse(book.uri), 0, 600)
-            }.getOrNull() else null
-        }
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(208.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) {
-            if (book.mediaType == MediaType.AUDIO) {
-                Icon(Icons.Default.Headphones, contentDescription = "Audiobook", modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-            } else if (cover == null) {
-                CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
-            } else {
-                Image(
-                    bitmap = cover!!.asImageBitmap(),
-                    contentDescription = "Cover of ${book.title}",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            }
-        }
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(20.dp, 22.dp, 12.dp, 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Image(painterResource(R.drawable.lumaread_firefly), "LumaRead firefly", Modifier.size(52.dp))
+                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        book.title,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        if (book.mediaType == MediaType.AUDIO) audioProgressLabel(book.positionMs, book.durationMs)
-                        else "Page ${book.lastPage + 1} of ${book.totalPages}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("LumaRead", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+                    Text("A quiet place for your books", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        Icons.Default.DeleteOutline,
-                        contentDescription = "Remove from library",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
+                Box {
+                    IconButton(onClick = { showTheme = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.DarkMode, "Reading theme") }
+                    DropdownMenu(showTheme, { showTheme = false }) {
+                        LumaThemeMode.entries.forEach { mode ->
+                            DropdownMenuItem(text = { Text(mode.name.lowercase().replaceFirstChar(Char::uppercase)) }, onClick = { onThemeMode(mode); showTheme = false })
+                        }
+                    }
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            LinearProgressIndicator(
-                progress = { book.progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(99.dp)),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            OutlinedTextField(
+                value = query, onValueChange = { query = it }, singleLine = true,
+                placeholder = { Text("Search your library") }, leadingIcon = { Icon(Icons.Default.Search, null) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(16.dp)
             )
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(20.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LibraryFilter.entries.forEach { item -> FilterChip(selected = filter == item, onClick = { filter = item }, label = { Text(item.label) }) }
+                Box {
+                    FilterChip(selected = false, onClick = { showSort = true }, leadingIcon = { Icon(Icons.Default.Sort, null, Modifier.size(18.dp)) }, label = { Text(if (sort == LibrarySort.RECENT) "Recent" else "Title") })
+                    DropdownMenu(showSort, { showSort = false }) {
+                        DropdownMenuItem({ Text("Recently opened") }, onClick = { sort = LibrarySort.RECENT; showSort = false })
+                        DropdownMenuItem({ Text("Title A–Z") }, onClick = { sort = LibrarySort.TITLE; showSort = false })
+                    }
+                }
+            }
+            Button(onClick = onImport, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(56.dp)) {
+                Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add book or audiobook")
+            }
+        }
+
+        if (query.isBlank() && filter == LibraryFilter.ALL && continuing.isNotEmpty()) {
+            item { SectionTitle("Continue Reading") }
+            item { BookRail(continuing, onOpen, onFavourite) }
+        }
+        if (query.isBlank() && filter == LibraryFilter.ALL && recent.isNotEmpty()) {
+            item { SectionTitle("Recently Added") }
+            item { BookRail(recent, onOpen, onFavourite) }
+        }
+        item {
+            Row(Modifier.fillMaxWidth().padding(20.dp, 24.dp, 20.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (query.isNotBlank()) "Search results" else filter.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text("${visible.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (visible.isEmpty()) item { EmptyLibrary(books.isNotEmpty(), onImport) }
+        else items(visible, key = { it.id }) { book -> LibraryRow(book, { onOpen(book) }, { onFavourite(book) }) }
+    }
+}
+
+private val LibraryFilter.label: String get() = when (this) {
+    LibraryFilter.ALL -> "All"
+    LibraryFilter.BOOKS -> "Books"
+    LibraryFilter.AUDIOBOOKS -> "Audiobooks"
+    LibraryFilter.FAVOURITES -> "Favourites"
+}
+
+@Composable private fun SectionTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(20.dp, 24.dp, 20.dp, 10.dp))
+}
+
+@Composable private fun BookRail(books: List<BookItem>, onOpen: (BookItem) -> Unit, onFavourite: (BookItem) -> Unit) {
+    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(books, key = { it.id }) { book -> CompactBookCard(book, { onOpen(book) }, { onFavourite(book) }) }
+    }
+}
+
+@Composable private fun CompactBookCard(book: BookItem, onOpen: () -> Unit, onFavourite: () -> Unit) {
+    Card(Modifier.width(164.dp).clickable(onClick = onOpen), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Cover(book, Modifier.fillMaxWidth().height(142.dp))
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                FavouriteButton(book, onFavourite)
+            }
+            Progress(book)
         }
     }
 }
 
-@Composable
-private fun NowPlayingCard(playback: PlaybackState, onOpen: () -> Unit, onToggle: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Headphones, null, tint = MaterialTheme.colorScheme.primary)
+@Composable private fun LibraryRow(book: BookItem, onOpen: () -> Unit, onFavourite: () -> Unit) {
+    Surface(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).clickable(onClick = onOpen), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Cover(book, Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)))
+            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(7.dp)); Progress(book)
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    playback.bookTitle,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    if (playback.loading) "Preparing page…" else "Page ${playback.pageIndex + 1} · ${playback.message}",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
-                )
-            }
-            IconButton(onClick = onToggle) {
-                Icon(
-                    if (playback.playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (playback.playing) "Pause" else "Play"
-                )
-            }
+            FavouriteButton(book, onFavourite)
         }
     }
 }
 
-@Composable
-private fun EmptyLibrary(modifier: Modifier = Modifier, onImport: () -> Unit) {
-    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                Icons.Default.AutoStories,
-                contentDescription = null,
-                modifier = Modifier.size(54.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(14.dp))
-            Text("Your bookshelf is empty", fontWeight = FontWeight.SemiBold)
-            Text(
-                "Import a PDF, MP3 or M4B and LumaRead will remember where you stopped.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 6.dp, start = 24.dp, end = 24.dp)
-            )
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = onImport,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Text("Choose a book or audiobook")
-            }
+@Composable private fun Cover(book: BookItem, modifier: Modifier) {
+    val context = LocalContext.current
+    val cover by produceState<android.graphics.Bitmap?>(null, book.uri) {
+        value = withContext(Dispatchers.IO) { if (book.mediaType == MediaType.PDF) runCatching { PdfPageRenderer.renderPage(context, Uri.parse(book.uri), 0, 500) }.getOrNull() else null }
+    }
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+        when {
+            book.mediaType == MediaType.AUDIO -> Icon(Icons.Default.Headphones, "Audiobook", Modifier.size(42.dp), tint = MaterialTheme.colorScheme.primary)
+            cover == null -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+            else -> Image(cover!!.asImageBitmap(), "Cover of ${book.title}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         }
     }
 }
 
-private fun audioProgressLabel(positionMs: Long, durationMs: Long): String {
-    fun time(ms: Long): String {
-        val totalMinutes = ms / 60_000
-        return "%d:%02d".format(totalMinutes / 60, totalMinutes % 60)
+@Composable private fun FavouriteButton(book: BookItem, onFavourite: () -> Unit) {
+    IconButton(onClick = onFavourite, modifier = Modifier.size(48.dp)) {
+        Icon(if (book.favourite) Icons.Default.Star else Icons.Outlined.StarBorder, if (book.favourite) "Remove favourite" else "Add favourite", tint = if (book.favourite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    return "${time(positionMs)} of ${time(durationMs)}"
+}
+
+@Composable private fun Progress(book: BookItem) {
+    val percent = (book.progress * 100).toInt()
+    Text(if (percent == 0) "Not started" else "$percent% complete", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(5.dp))
+    LinearProgressIndicator(progress = { book.progress }, modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(99.dp)))
+}
+
+@Composable private fun EmptyLibrary(hasBooks: Boolean, onImport: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(40.dp, 56.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(if (hasBooks) Icons.Default.Search else Icons.Default.AutoStories, null, Modifier.size(58.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(18.dp))
+        Text(if (hasBooks) "Nothing matches" else "Your shelf is ready", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(if (hasBooks) "Try another search or library filter." else "Add a PDF or audiobook. Your files stay where they are and remain available offline.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+        if (!hasBooks) Button(onClick = onImport, modifier = Modifier.padding(top = 20.dp).height(48.dp)) { Text("Choose a file") }
+    }
 }

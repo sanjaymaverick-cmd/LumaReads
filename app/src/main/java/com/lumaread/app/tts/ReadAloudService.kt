@@ -29,7 +29,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.text.BreakIterator
+import com.lumaread.app.data.ReadingText
+import com.lumaread.app.data.SkipRules
+import com.lumaread.app.data.SpokenUnit
 import java.util.Locale
 
 
@@ -43,6 +45,9 @@ data class PlaybackState(
     val totalPages: Int = 0,
     val sentenceIndex: Int = 0,
     val sentenceCount: Int = 0,
+    val paragraphIndex: Int = 0,
+    val paragraphStartLine: Int = 0,
+    val paragraphEndLine: Int = 0,
     val message: String = ""
 )
 
@@ -55,11 +60,13 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
     private var currentPage = 0
     private var totalPages = 0
     private var sentenceIndex = 0
-    private var sentences: List<String> = emptyList()
+    private var units: List<SpokenUnit> = emptyList()
+    private var skipRules = SkipRules()
     private var paused = false
     private var pausedByAudioFocus = false
     private var speed = 1.0f
-    private var voiceMode = VOICE_NATURAL
+    private var pitch = 1.0f
+    private var voiceName = ""
     private var pageLoadJob: Job? = null
 
     private lateinit var audioManager: AudioManager
@@ -105,6 +112,8 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
                 speed = intent.getFloatExtra(EXTRA_SPEED, speed).coerceIn(0.6f, 2.0f)
                 tts?.setSpeechRate(speed)
             }
+            ACTION_SKIP_LINE -> skipLine()
+            ACTION_SKIP_PARAGRAPH -> skipParagraph()
         }
         return START_NOT_STICKY
     }
@@ -117,14 +126,18 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
         totalPages = intent.getIntExtra(EXTRA_TOTAL_PAGES, 0).coerceAtLeast(1)
         currentPage = currentPage.coerceIn(0, totalPages - 1)
         speed = intent.getFloatExtra(EXTRA_SPEED, 1.0f).coerceIn(0.6f, 2.0f)
-        voiceMode = intent.getStringExtra(EXTRA_VOICE_MODE) ?: VOICE_NATURAL
+        pitch = intent.getFloatExtra(EXTRA_PITCH, 1.0f).coerceIn(0.5f, 2.0f)
+        voiceName = intent.getStringExtra(EXTRA_VOICE_NAME).orEmpty()
 
         val saved = getSharedPreferences(PREF_PLAYBACK, MODE_PRIVATE)
         val canResumeSentence = saved.getString("uri", null) == uriString &&
             saved.getInt("page", -1) == currentPage
-        sentenceIndex = if (canResumeSentence) saved.getInt("sentence", 0).coerceAtLeast(0) else 0
+        sentenceIndex = intent.getIntExtra(EXTRA_LINE, if (canResumeSentence) saved.getInt("sentence", 0) else 0).coerceAtLeast(0)
+        skipRules = SkipRules(
+            intent.getStringExtra(EXTRA_SKIP_RULES).orEmpty().split(',').filter { it.isNotBlank() }.toSet()
+        )
 
-        sentences = emptyList()
+        units = emptyList()
         paused = false
         pausedByAudioFocus = false
 
@@ -134,6 +147,7 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
         if (initReady) {
             tts?.stop()
             tts?.setSpeechRate(speed)
+            tts?.setPitch(pitch)
             loadPageAndSpeak()
         }
     }
@@ -179,23 +193,26 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
                 return@launch
             }
 
-            val locale = detectLocale(text)
+            val locale = ReadingText.detectLocale(text)
             configureVoice(locale)
-            sentences = splitSentences(text, locale)
-            sentenceIndex = sentenceIndex.coerceIn(0, (sentences.size - 1).coerceAtLeast(0))
+            units = ReadingText.units(text, currentPage, locale)
+            sentenceIndex = nextSpeakableIndex(sentenceIndex.coerceAtLeast(0))
             persistPosition()
-            if (!paused) speakCurrentSentence()
+            if (!paused) {
+                if (sentenceIndex < 0) advancePastPage() else speakCurrentSentence()
+            }
         }
     }
 
     private fun speakCurrentSentence() {
         if (paused) return
-        if (sentences.isEmpty()) {
+        if (units.isEmpty()) {
             loadPageAndSpeak()
             return
         }
-        if (sentenceIndex >= sentences.size) {
-            advanceSentence()
+        sentenceIndex = nextSpeakableIndex(sentenceIndex)
+        if (sentenceIndex < 0 || sentenceIndex >= units.size) {
+            advancePastPage()
             return
         }
 
@@ -206,8 +223,9 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
         }
 
         acquireWakeLock()
-        val sentence = sentences[sentenceIndex]
+        val sentence = units[sentenceIndex].text
         tts?.setSpeechRate(speed)
+        tts?.setPitch(pitch)
         val result = tts?.speak(
             sentence,
             TextToSpeech.QUEUE_FLUSH,
@@ -221,29 +239,54 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
         } else {
             persistPosition()
             updateState(active = true, playing = true, loading = false, message = sentence.take(90))
-            updateNotification("Page ${currentPage + 1} · ${sentence.take(56)}")
+            updateNotification("Page ${currentPage + 1} · line ${sentenceIndex + 1} · ${sentence.take(40)}")
         }
+    }
+
+    private fun nextSpeakableIndex(from: Int): Int {
+        if (units.isEmpty()) return -1
+        return units.indexOfFirst { it.lineIndex >= from && !skipRules.skips(it.locator) }
     }
 
     private fun advanceSentence() {
         releaseWakeLock()
         if (paused) return
-        sentenceIndex++
-        if (sentenceIndex < sentences.size) {
+        sentenceIndex = nextSpeakableIndex(sentenceIndex + 1)
+        if (sentenceIndex >= 0) {
             persistPosition()
             speakCurrentSentence()
             return
         }
+        advancePastPage()
+    }
 
+    private fun advancePastPage() {
         if (currentPage < totalPages - 1) {
             currentPage++
             sentenceIndex = 0
-            sentences = emptyList()
+            units = emptyList()
             persistPosition()
             loadPageAndSpeak()
         } else {
             finishBook("Finished")
         }
+    }
+
+    private fun skipLine() {
+        if (!_state.value.active || units.isEmpty()) return
+        val current = units.getOrNull(sentenceIndex) ?: return
+        skipRules = skipRules.plus(current.locator)
+        paused = false
+        tts?.stop()
+        advanceSentence()
+    }
+
+    private fun skipParagraph() {
+        if (!_state.value.active || units.isEmpty()) return
+        skipRules = skipRules.plusAll(ReadingText.skipParagraphFrom(units, sentenceIndex))
+        paused = false
+        tts?.stop()
+        advanceSentence()
     }
 
     private fun pauseReading() {
@@ -265,14 +308,14 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
         if (!_state.value.active) return
         paused = false
         pausedByAudioFocus = false
-        if (sentences.isEmpty()) loadPageAndSpeak() else speakCurrentSentence()
+        if (units.isEmpty()) loadPageAndSpeak() else speakCurrentSentence()
     }
 
     private fun jumpPage(delta: Int) {
         if (!_state.value.active) return
         currentPage = (currentPage + delta).coerceIn(0, totalPages - 1)
         sentenceIndex = 0
-        sentences = emptyList()
+        units = emptyList()
         paused = false
         pausedByAudioFocus = false
         persistPosition()
@@ -306,45 +349,23 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
     private fun configureVoice(locale: Locale) {
         val engine = tts ?: return
         engine.language = locale
-        if (voiceMode == VOICE_SYSTEM) return
+        engine.voices?.firstOrNull { it.name == voiceName }?.let {
+            engine.voice = it
+            return
+        }
 
         val candidates = engine.voices
             ?.asSequence()
             ?.filter { it.locale.language == locale.language }
-            ?.filter { voiceMode != VOICE_OFFLINE || !it.isNetworkConnectionRequired }
             ?.sortedWith(
-                compareByDescending<android.speech.tts.Voice> { it.quality }
+                compareByDescending<android.speech.tts.Voice> { it.locale.country == "IN" }
+                    .thenByDescending { it.quality }
                     .thenBy { it.isNetworkConnectionRequired }
             )
             ?.toList()
             .orEmpty()
 
         candidates.firstOrNull()?.let { engine.voice = it }
-    }
-
-    private fun splitSentences(text: String, locale: Locale): List<String> {
-        val iterator = BreakIterator.getSentenceInstance(locale)
-        iterator.setText(text)
-        val result = mutableListOf<String>()
-        var start = iterator.first()
-        var end = iterator.next()
-        while (end != BreakIterator.DONE) {
-            val sentence = text.substring(start, end).replace(Regex("\\s+"), " ").trim()
-            if (sentence.isNotBlank()) {
-                if (sentence.length <= 3500) result += sentence
-                else sentence.chunked(3200).forEach { chunk -> result += chunk }
-            }
-            start = end
-            end = iterator.next()
-        }
-        if (result.isEmpty() && text.isNotBlank()) result += text.chunked(3200)
-        return result
-    }
-
-    private fun detectLocale(text: String): Locale {
-        val devanagari = text.count { it.code in 0x0900..0x097F }
-        val letters = text.count { it.isLetter() }.coerceAtLeast(1)
-        return if (devanagari.toFloat() / letters > 0.08f) Locale("hi", "IN") else Locale("en", "IN")
     }
 
     private fun persistPosition() {
@@ -372,7 +393,10 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
             pageIndex = currentPage,
             totalPages = totalPages,
             sentenceIndex = sentenceIndex,
-            sentenceCount = sentences.size,
+            sentenceCount = units.size,
+            paragraphIndex = current?.paragraphIndex ?: 0,
+            paragraphStartLine = inParagraph.minOfOrNull { it.lineIndex } ?: 0,
+            paragraphEndLine = inParagraph.maxOfOrNull { it.lineIndex } ?: 0,
             message = message
         )
     }
@@ -484,9 +508,9 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
             .setOngoing(_state.value.active)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(R.drawable.ic_headphones, "Previous", servicePendingIntent(ACTION_PREVIOUS_PAGE, 2))
+            .addAction(R.drawable.ic_headphones, "Skip line", servicePendingIntent(ACTION_SKIP_LINE, 2))
             .addAction(R.drawable.ic_headphones, pauseLabel, servicePendingIntent(pauseOrResume, 3))
-            .addAction(R.drawable.ic_headphones, "Next", servicePendingIntent(ACTION_NEXT_PAGE, 4))
+            .addAction(R.drawable.ic_headphones, "Skip ¶", servicePendingIntent(ACTION_SKIP_PARAGRAPH, 4))
             .addAction(R.drawable.ic_headphones, "Stop", servicePendingIntent(ACTION_STOP, 5))
             .build()
     }
@@ -522,12 +546,20 @@ class ReadAloudService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_NEXT_PAGE = "com.lumaread.NEXT_PAGE"
         const val ACTION_PREVIOUS_PAGE = "com.lumaread.PREVIOUS_PAGE"
         const val ACTION_SET_SPEED = "com.lumaread.SET_SPEED"
+        const val ACTION_SKIP_LINE = "com.lumaread.SKIP_LINE"
+        const val ACTION_SKIP_PARAGRAPH = "com.lumaread.SKIP_PARAGRAPH"
 
         const val EXTRA_URI = "uri"
         const val EXTRA_TITLE = "title"
         const val EXTRA_PAGE = "page"
+        const val EXTRA_LINE = "line"
         const val EXTRA_TOTAL_PAGES = "total_pages"
         const val EXTRA_SPEED = "speed"
+        const val EXTRA_PITCH = "pitch"
+        const val EXTRA_VOICE_NAME = "voice_name"
+        const val EXTRA_SKIP_RULES = "skip_rules"
+
+        @Deprecated("Use an explicit installed voice")
         const val EXTRA_VOICE_MODE = "voice_mode"
 
         const val VOICE_NATURAL = "natural"

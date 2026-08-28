@@ -86,7 +86,8 @@ fun ReaderScreen(
     var showVoiceSettings by remember { mutableStateOf(false) }
     val prefs = remember { context.getSharedPreferences("lumaread_voice", android.content.Context.MODE_PRIVATE) }
     var speed by remember { mutableFloatStateOf(prefs.getFloat("speed", 1.0f)) }
-    var voiceMode by remember { mutableStateOf(prefs.getString("voice_mode", ReadAloudService.VOICE_NATURAL) ?: ReadAloudService.VOICE_NATURAL) }
+    var pitch by remember { mutableFloatStateOf(prefs.getFloat("pitch", 1.0f)) }
+    var voiceName by remember { mutableStateOf(prefs.getString("voice_name", "").orEmpty()) }
 
     LaunchedEffect(playback.pageIndex, playback.bookUri, playback.active) {
         if (playbackForBook && playback.pageIndex in 0 until book.totalPages && playback.pageIndex != page) {
@@ -111,7 +112,8 @@ fun ReaderScreen(
             putExtra(ReadAloudService.EXTRA_PAGE, page)
             putExtra(ReadAloudService.EXTRA_TOTAL_PAGES, book.totalPages)
             putExtra(ReadAloudService.EXTRA_SPEED, speed)
-            putExtra(ReadAloudService.EXTRA_VOICE_MODE, voiceMode)
+            putExtra(ReadAloudService.EXTRA_PITCH, pitch)
+            putExtra(ReadAloudService.EXTRA_VOICE_NAME, voiceName)
         }
         ContextCompat.startForegroundService(context, intent)
     }
@@ -206,14 +208,14 @@ fun ReaderScreen(
     }
 
     if (showVoiceSettings) {
-        VoiceSettingsDialog(
-            speed = speed,
-            voiceMode = voiceMode,
+        VoiceStudioDialog(
+            settings = VoiceStudioSettings(voiceName, speed, pitch),
             onDismiss = { showVoiceSettings = false },
-            onSave = { newSpeed, newMode ->
-                speed = newSpeed
-                voiceMode = newMode
-                prefs.edit().putFloat("speed", speed).putString("voice_mode", voiceMode).apply()
+            onSave = { settings ->
+                speed = settings.speed
+                pitch = settings.pitch
+                voiceName = settings.voiceName
+                prefs.edit().putFloat("speed", speed).putFloat("pitch", pitch).putString("voice_name", voiceName).apply()
                 if (playbackForBook) startReading()
                 showVoiceSettings = false
             }

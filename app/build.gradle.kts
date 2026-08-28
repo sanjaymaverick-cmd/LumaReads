@@ -15,6 +15,8 @@ android {
         versionName = "1.1.0"
 
         vectorDrawables.useSupportLibrary = true
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -59,4 +61,7 @@ dependencies {
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test:core:1.7.0")
 }

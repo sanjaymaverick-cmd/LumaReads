@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lumaread.app.data.BookItem
 import com.lumaread.app.data.MediaType
 import com.lumaread.app.audio.AudiobookService
+import com.lumaread.app.audio.M4bChapterReader
 import com.lumaread.app.ui.AudiobookScreen
 import com.lumaread.app.data.LibraryRepository
 import com.lumaread.app.pdf.PdfPageRenderer
@@ -30,6 +31,7 @@ import com.lumaread.app.tts.ReadAloudService
 import com.lumaread.app.ui.LibraryScreen
 import com.lumaread.app.ui.ReaderScreen
 import com.lumaread.app.ui.theme.LumaTheme
+import com.lumaread.app.ui.theme.LumaThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -38,10 +40,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            LumaTheme {
+            val appearance = remember { getSharedPreferences("lumaread_appearance", MODE_PRIVATE) }
+            var themeMode by remember {
+                mutableStateOf(runCatching { LumaThemeMode.valueOf(appearance.getString("theme", null) ?: "PAPER") }.getOrDefault(LumaThemeMode.PAPER))
+            }
+            LumaTheme(themeMode) {
                 val repository = remember { LibraryRepository(this@MainActivity) }
                 var books by remember { mutableStateOf(repository.loadBooks()) }
                 var selectedBookId by remember { mutableStateOf<String?>(null) }
+                var pendingImport by remember { mutableStateOf<Uri?>(null) }
                 val playback by ReadAloudService.state.collectAsStateWithLifecycle()
                 val audiobook by AudiobookService.state.collectAsStateWithLifecycle()
 
@@ -70,26 +77,33 @@ class MainActivity : ComponentActivity() {
                                 Intent.FLAG_GRANT_READ_URI_PERMISSION
                             )
                         }
+                        pendingImport = uri
+                    }
+                }
+
+                LaunchedEffect(pendingImport) {
+                    val uri = pendingImport ?: return@LaunchedEffect
+                    val imported = withContext(Dispatchers.IO) {
                         val displayName = getDisplayName(uri)
                         val isAudio = contentResolver.getType(uri)?.startsWith("audio/") == true ||
-                            displayName.endsWith(".mp3", true) || displayName.endsWith(".m4b", true) || displayName.endsWith(".m4a", true)
+                            listOf(".mp3", ".m4b", ".m4a").any { displayName.endsWith(it, true) }
                         val pageCount = if (isAudio) 1 else runCatching { PdfPageRenderer.pageCount(this@MainActivity, uri) }.getOrDefault(1)
                         val audioMetadata = if (isAudio) readAudioMetadata(uri) else null
                         val title = audioMetadata?.first?.ifBlank { null }
                             ?: displayName.substringBeforeLast('.').ifBlank { if (isAudio) "Untitled audiobook" else "Untitled book" }
-                        val existing = books.firstOrNull { it.uri == uri.toString() }
-                        val book = existing ?: BookItem(
-                            id = uri.toString(),
-                            title = title,
-                            uri = uri.toString(),
-                            totalPages = pageCount,
+                        BookItem(
+                            id = uri.toString(), title = title, uri = uri.toString(), totalPages = pageCount,
                             mediaType = if (isAudio) MediaType.AUDIO else MediaType.PDF,
-                            durationMs = audioMetadata?.second ?: 0L
+                            durationMs = audioMetadata?.second ?: 0L,
+                            chapters = if (isAudio && displayName.endsWith(".m4b", true)) M4bChapterReader.read(this@MainActivity, uri) else emptyList()
                         )
-                        books = (books.filterNot { it.id == book.id } + book).sortedByDescending { it.addedAt }
-                        repository.saveBooks(books)
-                        selectedBookId = book.id
                     }
+                    val existing = books.firstOrNull { it.uri == uri.toString() }
+                    val book = existing ?: imported
+                    books = (books.filterNot { it.id == book.id } + book).sortedByDescending { it.addedAt }
+                    repository.saveBooks(books)
+                    selectedBookId = book.id
+                    pendingImport = null
                 }
 
                 LaunchedEffect(playback.bookUri, playback.pageIndex, playback.active) {
@@ -104,7 +118,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                LaunchedEffect(audiobook.uri, audiobook.positionMs / 5_000L, audiobook.durationMs) {
+                LaunchedEffect(audiobook.uri, audiobook.positionMs / 5_000L, audiobook.durationMs, audiobook.speed) {
                     if (audiobook.uri.isNotBlank()) {
                         val index = books.indexOfFirst { it.uri == audiobook.uri }
                         if (index >= 0) {
@@ -112,7 +126,8 @@ class MainActivity : ComponentActivity() {
                                 list[index] = list[index].copy(
                                     positionMs = audiobook.positionMs,
                                     durationMs = audiobook.durationMs.coerceAtLeast(list[index].durationMs),
-                                    lastOpenedAt = System.currentTimeMillis()
+                                    lastOpenedAt = System.currentTimeMillis(),
+                                    playbackSpeed = audiobook.speed
                                 )
                             }
                             repository.saveBooks(books)
@@ -124,16 +139,20 @@ class MainActivity : ComponentActivity() {
                 if (selected == null) {
                     LibraryScreen(
                         books = books,
-                        playback = playback,
                         onImport = { documentPicker.launch(arrayOf("application/pdf", "audio/mpeg", "audio/mp4", "audio/x-m4b", "audio/*")) },
                         onOpen = {
                             books = books.map { item -> if (item.id == it.id) item.copy(lastOpenedAt = System.currentTimeMillis()) else item }
                             repository.saveBooks(books)
                             selectedBookId = it.id
                         },
-                        onRemove = { book ->
-                            books = books.filterNot { it.id == book.id }
+                        onFavourite = { book ->
+                            books = books.map { item -> if (item.id == book.id) item.copy(favourite = !item.favourite) else item }
                             repository.saveBooks(books)
+                        },
+                        themeMode = themeMode,
+                        onThemeMode = { selectedTheme ->
+                            themeMode = selectedTheme
+                            appearance.edit().putString("theme", selectedTheme.name).apply()
                         }
                     )
                 } else if (selected.mediaType == MediaType.AUDIO) {
