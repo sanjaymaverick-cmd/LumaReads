@@ -36,6 +36,9 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
+      - name: Run unit tests
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
+
       - name: Build debug APK
         shell: bash
         run: |

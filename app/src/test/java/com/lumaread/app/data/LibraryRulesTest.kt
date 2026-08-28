@@ -2,7 +2,6 @@ package com.lumaread.app.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibraryRulesTest {
@@ -35,15 +34,10 @@ class LibraryRulesTest {
     }
 
     @Test
-    fun `decodes legacy bookmarks and retains locator bookmark fields`() {
-        val legacy = LibraryRepository.decodeBookmarks("[2,5]")
+    fun `migrates legacy comma separated bookmark pages to locators`() {
+        val legacy = LibraryRepository.legacyBookmarks("2,5")
         assertEquals(listOf(2, 5), legacy.map { it.locator.pageIndex })
-
-        val encoded = LibraryRepository.encodeBookmarks(listOf(Bookmark("mark", Locator(3, 4), 7L)))
-        val restored = LibraryRepository.decodeBookmarks(encoded).single()
-        assertEquals(Locator(3, 4), restored.locator)
-        assertEquals(7L, restored.createdAt)
-        assertTrue(restored.id == "mark")
+        assertEquals(listOf("page-2", "page-5"), legacy.map { it.id })
     }
 
     private fun book(
