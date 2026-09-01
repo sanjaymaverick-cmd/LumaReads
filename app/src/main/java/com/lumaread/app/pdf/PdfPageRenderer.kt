@@ -4,13 +4,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import com.lumaread.app.io.OpenUri
 import kotlin.math.roundToInt
 
 object PdfPageRenderer {
     fun pageCount(context: Context, uri: Uri): Int {
-        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
-            ?: error("Unable to open PDF")
-        descriptor.use { pfd ->
+        OpenUri.fileDescriptor(context, uri).use { pfd ->
             PdfRenderer(pfd).use { renderer ->
                 return renderer.pageCount
             }
@@ -23,9 +22,7 @@ object PdfPageRenderer {
         pageIndex: Int,
         targetWidthPx: Int = 1400
     ): Bitmap {
-        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
-            ?: error("Unable to open PDF")
-        descriptor.use { pfd ->
+        OpenUri.fileDescriptor(context, uri).use { pfd ->
             PdfRenderer(pfd).use { renderer ->
                 val safePage = pageIndex.coerceIn(0, renderer.pageCount - 1)
                 renderer.openPage(safePage).use { page ->

@@ -14,7 +14,7 @@ object LibraryRules {
         .filter {
             when (filter) {
                 LibraryFilter.ALL -> true
-                LibraryFilter.BOOKS -> it.mediaType == MediaType.PDF
+                LibraryFilter.BOOKS -> it.mediaType != MediaType.AUDIO
                 LibraryFilter.AUDIOBOOKS -> it.mediaType == MediaType.AUDIO
                 LibraryFilter.FAVOURITES -> it.favourite
                 LibraryFilter.MISSING -> it.status == BookStatus.MISSING
