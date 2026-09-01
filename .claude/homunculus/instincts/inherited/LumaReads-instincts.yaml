@@ -1,0 +1,130 @@
+# Instincts generated from https://github.com/sanjaymaverick-cmd/LumaReads
+# Generated: 2026-09-01T10:16:33.414Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: LumaReads-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/sanjaymaverick-cmd/LumaReads
+---
+
+# LumaReads Commit Length
+
+## Action
+
+Keep commit messages concise (~47 characters)
+
+## Evidence
+
+- Average commit message length: 47 chars
+- Based on 7 commits
+
+---
+id: LumaReads-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/sanjaymaverick-cmd/LumaReads
+---
+
+# LumaReads Naming Files
+
+## Action
+
+Use PascalCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: PascalCase
+
+---
+id: LumaReads-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/sanjaymaverick-cmd/LumaReads
+---
+
+# LumaReads Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: LumaReads-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/sanjaymaverick-cmd/LumaReads
+---
+
+# LumaReads Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: LumaReads-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/sanjaymaverick-cmd/LumaReads
+---
+
+# LumaReads Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: LumaReads-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/sanjaymaverick-cmd/LumaReads
+---
+
+# LumaReads Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~21x per month
+- Files: 
+
