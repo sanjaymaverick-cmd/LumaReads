@@ -10,6 +10,7 @@ data class BookItem(
     val bookmarks: List<Bookmark> = emptyList(),
     val addedAt: Long = System.currentTimeMillis(),
     val mediaType: MediaType = MediaType.PDF,
+    val format: BookFormat = BookFormat.PDF,
     val durationMs: Long = 0L,
     val positionMs: Long = 0L,
     val lastOpenedAt: Long = 0L,
@@ -17,7 +18,9 @@ data class BookItem(
     val playbackSpeed: Float = 1f,
     val chapters: List<AudioChapter> = emptyList(),
     val status: BookStatus = BookStatus.LINKED,
-    val skipRules: SkipRules = SkipRules()
+    val skipRules: SkipRules = SkipRules(),
+    val sourceHash: String = "",
+    val copied: Boolean = false
 ) {
     val resumeLocator: Locator get() = Locator(lastPage, lastLine)
 
@@ -41,6 +44,19 @@ data class BookItem(
     }
 }
 
-enum class MediaType { PDF, AUDIO }
+enum class MediaType { PDF, REFLOW, IMAGE, AUDIO }
+
+enum class BookFormat {
+    PDF, EPUB, TXT, HTML, MARKDOWN, DOC, DOCX, RTF, ODT, FB2, MOBI, CBZ, CBR, DJVU, MP3, M4B, AUDIO, UNSUPPORTED
+}
 
 data class AudioChapter(val title: String, val startMs: Long)
+
+data class AnnotationItem(
+    val id: String,
+    val bookId: String,
+    val kind: String,
+    val locator: Locator,
+    val body: String,
+    val createdAt: Long = System.currentTimeMillis()
+)
