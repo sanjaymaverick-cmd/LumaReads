@@ -36,7 +36,10 @@ import kotlinx.coroutines.withContext
 @Composable
 fun LibraryScreen(
     books: List<BookItem>,
+    message: String = "",
     onImport: () -> Unit,
+    onBackup: () -> Unit = {},
+    onRestore: () -> Unit = {},
     onOpen: (BookItem) -> Unit,
     onFavourite: (BookItem) -> Unit,
     themeMode: LumaThemeMode,
@@ -89,6 +92,13 @@ fun LibraryScreen(
             }
             Button(onClick = onImport, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(56.dp)) {
                 Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add book or audiobook")
+            }
+            Row(Modifier.fillMaxWidth().padding(20.dp, 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onBackup, modifier = Modifier.weight(1f).height(48.dp)) { Text("Backup") }
+                OutlinedButton(onClick = onRestore, modifier = Modifier.weight(1f).height(48.dp)) { Text("Restore") }
+            }
+            if (message.isNotBlank()) {
+                Text(message, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
             }
         }
 
